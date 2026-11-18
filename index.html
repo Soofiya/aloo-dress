@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover lets us use the full screen on notched phones;
+       the CSS adds safe-area padding so nothing hides behind the notch. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Aloo All Day</title>
+  <meta name="description" content="Aloo All Day - dress up Aloo the cat!">
+  <meta name="theme-color" content="#fdc441">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  <link rel="preload" href="assets/fonts/SoofSans.otf" as="font" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- Hand-wobbly border, drawn by game.js so it fits any screen -->
+    <div class="frame" id="frame" aria-hidden="true"><svg><path/></svg></div>
+
+    <!-- ===== TITLE (edit the words here) ===== -->
+    <header class="title">
+      <h1><span class="u-dash">Aloo All Day</span> - <span class="u-wave">Dress Aloo</span></h1>
+    </header>
+
+    <!-- ===== STAGE: Aloo + her outfit ===== -->
+    <main class="stage-area" id="stage-area">
+      <div class="stage" id="stage">
+        <!-- All clothing layers are added into #layers by game.js -->
+        <div class="layers" id="layers">
+          <img class="layer base on" id="aloo" src="assets/aloo.png" alt="Aloo the cat" draggable="false">
+        </div>
+      </div>
+
+      <!-- Buttons down the right-hand side. Pictures live in assets/ui/ -->
+      <div class="tools">
+        <button class="tool" id="btn-random" type="button" aria-label="Mix: random outfit"><img src="assets/ui/mix.png" alt=""><span>Mix</span></button>
+        <button class="tool" id="btn-reset"  type="button" aria-label="Reset: take everything off"><img src="assets/ui/reset.png" alt=""><span>Reset</span></button>
+        <button class="tool" id="btn-save"   type="button" aria-label="Save picture of Aloo"><img src="assets/ui/save.png" alt=""><span>Save</span></button>
+      </div>
+
+      <p class="hint" id="hint">Tap or drag outfits onto Aloo</p>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <!-- ===== CAROUSEL: every item in one row ===== -->
+    <footer class="carousel-wrap">
+      <button class="arrow" id="prev" type="button" aria-label="Previous items"><img src="assets/ui/prev.png" alt=""></button>
+      <div class="carousel" id="tray" role="group" aria-label="Clothes"></div>
+      <button class="arrow" id="next" type="button" aria-label="Next items"><img src="assets/ui/next.png" alt=""></button>
+    </footer>
+
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
