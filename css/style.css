@@ -1,0 +1,226 @@
+/* ==========================================================================
+   style.css — mobile first. Colours and the font are set at the top.
+   ========================================================================== */
+
+@font-face {
+  font-family: "Soof Sans";
+  src: url("../assets/fonts/SoofSans.otf") format("opentype");
+  font-display: swap;
+}
+
+:root {
+  --bg:       #fdc441;   /* the yellow */
+  --ink:      #141414;   /* the black of the drawings */
+  --ratio:    0.5942;    /* Aloo's width / height. game.js sets this from aloo.png automatically */
+  --car-h:    clamp(96px, 17dvh, 150px);   /* height of the carousel */
+  --zoom:     1.15;      /* how big Aloo is on screen. Her PNG has empty margins, so >1 is fine. Raise to make her bigger */
+  --tap:      48px;      /* minimum tap target (>= 44px) */
+}
+
+* { box-sizing: border-box; }
+
+/* ---- Lock the page: no scrolling, no pull-to-refresh, no text selection ---- */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;          /* removes double-tap zoom */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;         /* no "save image" popup on long press (iOS) */
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  position: fixed;                     /* stops iOS rubber-banding */
+  inset: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Soof Sans", ui-rounded, system-ui, sans-serif;
+}
+img { -webkit-user-drag: none; }
+button { font: inherit; color: inherit; }
+
+/* ---- Overall layout: a phone-shaped column, centred on big screens ---- */
+.app {
+  position: relative;
+  height: 100vh;                       /* fallback */
+  height: 100dvh;                      /* dynamic viewport: ignores browser toolbars */
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* 22px = room inside the wobbly border; env() = notches and home bar */
+  padding: calc(22px + env(safe-area-inset-top)) calc(22px + env(safe-area-inset-right))
+           calc(22px + env(safe-area-inset-bottom)) calc(22px + env(safe-area-inset-left));
+}
+
+/* ---- The wobbly border ---- */
+.frame {
+  position: absolute;
+  inset: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right))
+         calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+  pointer-events: none;
+}
+.frame svg { width: 100%; height: 100%; overflow: visible; }
+.frame path { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- Title ---- */
+.title { flex: none; padding: 6px 4px 0; text-align: center; }
+.title h1 {
+  margin: 0;
+  font-weight: normal;
+  font-size: clamp(20px, 6.2vw, 32px);
+  line-height: 1.5;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+/* The two hand-drawn underlines in the design */
+.u-dash { text-decoration: underline dashed 3px; text-underline-offset: 8px; }
+.u-wave { text-decoration: underline wavy 3px;   text-underline-offset: 8px; }
+
+/* ---- Stage ---- */
+.stage-area {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  container-type: size;                /* lets .stage measure its parent */
+  display: grid;
+  place-items: center;
+}
+/* The stage has the same shape as aloo.png and is the biggest one that fits. */
+.stage {
+  /* As tall as fits, times --zoom. The empty margins around Aloo in her PNG are transparent,
+     so it is fine for the stage to spill a little past the box (capped so it never gets silly). */
+  width: min(calc(100cqw + 120px), calc((100cqh - 16px) * var(--zoom) * var(--ratio)));
+  aspect-ratio: var(--ratio);
+  position: relative;
+  touch-action: none;                  /* nothing on the stage scrolls or zooms */
+  /* Aloo's tail pulls her to the left, so nudge the whole stage left to centre her body */
+  transform: translateX(-3%);
+}
+.layers { position: absolute; inset: 0; transform-origin: 50% 80%; }
+.layer {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.layer.on { opacity: 1; }
+.layers.bounce { animation: bounce .45s ease-out; }
+@keyframes bounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.03, .97); }
+  60%  { transform: scale(.99, 1.02); }
+  100% { transform: scale(1); }
+}
+/* While dragging, the stage area shows a dashed hand-drawn-ish outline */
+.stage-area.drop-ready::after {
+  content: ""; position: absolute; inset: 4px;
+  border: 4px dashed var(--ink); border-radius: 28px; pointer-events: none;
+}
+
+/* ---- Mix / Reset / Save ---- */
+.tools {
+  position: absolute; top: 2px; right: 8px;
+  display: flex; flex-direction: column; gap: 4px;
+  z-index: 2;
+}
+.tool {
+  background: none; border: 0; padding: 6px 4px;
+  min-width: 56px; min-height: 56px;   /* comfortably above 44px */
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px;
+  cursor: pointer;
+  font-size: 16px; text-transform: uppercase; letter-spacing: .03em; line-height: 1;
+}
+.tool img { width: 34px; height: auto; pointer-events: none; }
+.tool:active { transform: scale(.92); }
+
+.hint {
+  position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%);
+  margin: 0; padding: 4px 14px;
+  font-size: 17px; text-transform: uppercase; letter-spacing: .03em;
+  white-space: nowrap; pointer-events: none;
+  transition: opacity .4s;
+}
+.hint.gone { opacity: 0; }
+
+.toast {
+  position: absolute; left: 50%; top: 40%; transform: translateX(-50%);
+  max-width: 80%; padding: 10px 18px;
+  background: var(--bg); border: 4px solid var(--ink); border-radius: 22px 30px 24px 28px;
+  font-size: 20px; text-transform: uppercase; text-align: center;
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.toast.show { opacity: 1; }
+
+/* ---- Carousel: all items in one row, three at a time ---- */
+.carousel-wrap {
+  flex: none;
+  height: var(--car-h);
+  display: flex; align-items: center; gap: 2px;
+}
+.arrow {
+  flex: none;
+  width: 44px; height: 100%; min-height: var(--tap);
+  background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.arrow img { height: 40px; width: auto; pointer-events: none; }
+.arrow:disabled { opacity: .2; cursor: default; }
+
+.carousel {
+  flex: 1; min-width: 0; height: 100%;
+  display: flex;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;       /* each swipe settles neatly on a whole item */
+  touch-action: pan-x;                 /* sideways = scroll, up/down = drag an item out */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.carousel::-webkit-scrollbar { display: none; }
+
+.thumb {
+  flex: 0 0 33.3333%;                  /* three items visible at once */
+  height: 100%;
+  position: relative;
+  padding: 8px;
+  background: none; border: 0; cursor: pointer;
+  scroll-snap-align: start;
+  touch-action: pan-x;
+  display: flex; align-items: center; justify-content: center;
+}
+.thumb img { width: 100%; max-height: 100%; aspect-ratio: 1; object-fit: contain; pointer-events: none; transition: transform .15s; }
+/* Worn: a wobbly hand-drawn ring around it + it grows a little (not colour alone) */
+.thumb .ring {
+  position: absolute; top: 50%; left: 50%;
+  width: calc(100% - 4px); max-width: calc(var(--car-h) - 4px); aspect-ratio: 1;
+  border: 4px solid var(--ink);
+  border-radius: 52% 48% 55% 45% / 48% 54% 46% 52%;
+  transform: translate(-50%, -50%) rotate(-2deg);
+  opacity: 0; transition: opacity .15s;
+  pointer-events: none;
+}
+.thumb[aria-pressed="true"] .ring { opacity: 1; }
+.thumb[aria-pressed="true"] img { transform: scale(.92); }
+.thumb.bounce img { animation: bounce .4s ease-out; }
+.thumb:focus-visible, .arrow:focus-visible, .tool:focus-visible {
+  outline: 4px dashed var(--ink); outline-offset: 2px;
+}
+
+/* The picture that follows your finger while dragging */
+.ghost {
+  position: fixed; z-index: 100;
+  width: 120px; height: 120px;
+  margin: -60px 0 0 -60px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 4px rgba(0,0,0,.25));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layers.bounce, .thumb.bounce img { animation: none; }
+  .layer, .hint, .toast { transition: none; }
+}
