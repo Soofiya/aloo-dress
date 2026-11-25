@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aloo All Day · Admin</title>
+<style>
+  @font-face { font-family: "Soof Sans"; src: url("/assets/fonts/SoofSans.otf") format("opentype"); }
+  :root { --bg:#fdc441; --ink:#141414; --card:#fff8e6; --ok:#0b6b2e; --bad:#b00020; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font: 16px/1.4 system-ui, sans-serif; }
+  h1, h2, .big { font-family: "Soof Sans", system-ui, sans-serif; font-weight: normal; text-transform: uppercase; letter-spacing:.02em; }
+  header { padding: 20px 24px 8px; display:flex; flex-wrap:wrap; align-items:baseline; gap:12px 24px; }
+  h1 { margin:0; font-size: 34px; }
+  header a { color: var(--ink); font-weight:600; }
+  main { max-width: 900px; margin: 0 auto; padding: 8px 20px 60px; }
+  section { background: var(--card); border: 3px solid var(--ink); border-radius: 18px 22px 20px 24px; padding: 18px 20px; margin: 18px 0; }
+  h2 { margin: 0 0 4px; font-size: 24px; }
+  .hint { margin: 0 0 12px; font-size: 14px; opacity: .8; }
+  button, select, input[type=text] { font: inherit; color: var(--ink); }
+  button { background: var(--ink); color: #fff; border: 0; border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+  button.light { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+  button.danger { background:#fff; color: var(--bad); border: 2px solid var(--bad); }
+  button:disabled { opacity:.35; cursor:default; }
+  select, input[type=text] { border: 2px solid var(--ink); border-radius: 8px; padding: 6px 8px; background:#fff; }
+  #drop { border: 3px dashed var(--ink); border-radius: 16px; padding: 26px; text-align:center; cursor:pointer; background:#fff; }
+  #drop.over { background:#ffe9a8; }
+  .row { display:flex; align-items:center; gap: 12px; padding: 8px 0; border-top: 2px dotted #0003; flex-wrap: wrap; }
+  .row:first-child { border-top: 0; }
+  .row img { width: 64px; height: 64px; object-fit: contain; background: #fff; border-radius: 10px; border: 2px solid var(--ink); }
+  .grow { flex: 1 1 160px; min-width: 140px; }
+  .status { font-size: 14px; min-width: 120px; }
+  .ok { color: var(--ok); font-weight: 600; } .bad { color: var(--bad); font-weight: 600; }
+  h3.sec { font-family: "Soof Sans", system-ui, sans-serif; font-weight: normal; text-transform: uppercase; font-size: 19px; margin: 16px 0 2px; text-decoration: underline wavy 2px; text-underline-offset: 5px; }
+  .num { width: 28px; text-align:right; opacity:.5; }
+  code { background:#fff; padding:1px 6px; border-radius:6px; }
+  ul.files { margin: 6px 0 0; padding-left: 20px; font-size: 14px; }
+  #toast { position: fixed; left:50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color:#fff; padding:10px 18px; border-radius:12px; opacity:0; transition:.25s; pointer-events:none; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Aloo All Day · Admin</h1>
+  <a href="/" target="_blank">Preview the game ↗</a>
+  <span id="canvasInfo" class="hint"></span>
+</header>
+<main>
+
+  <section>
+    <h2>1 · Add clothes</h2>
+    <p class="hint">PNGs only, on the same canvas as aloo.png. Pick the category and name for each, then press Add. Using a file name that already exists in that category replaces the artwork.</p>
+    <div id="drop">Drop PNG files here, or click to choose<input id="file" type="file" accept="image/png" multiple hidden></div>
+    <div id="newRows"></div>
+    <p><button id="addAll" disabled>Add to the game</button></p>
+  </section>
+
+  <section>
+    <h2>2 · The carousel</h2>
+    <p class="hint">Items are grouped under the tabs players see. Use the arrows to reorder items of the same type, rename them, or change an item's type (which can move it to another tab).</p>
+    <div id="items"></div>
+  </section>
+
+  <section>
+    <h2>3 · Put it on GitHub</h2>
+    <p class="hint">Everything you've changed is collected in a folder called <code>to-upload</code>. Just drag what's inside it onto GitHub.</p>
+    <div id="pending"></div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const KEY = "__KEY__";
+let S = null;                 // the latest state from the server
+let queue = [];               // files waiting to be added: {file, id, category, name, url, w, h, status}
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, body, headers) {
+  const opt = body === undefined
+    ? { headers: { 'X-Key': KEY } }
+    : { method: 'POST', headers: Object.assign({ 'X-Key': KEY }, headers || {}), body };
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Request failed');
+  return j;
+}
+const post = (path, obj) => api(path, JSON.stringify(obj || {}), { 'Content-Type': 'application/json' });
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
+
+// Guess a category from the file name (you can change it in the drop-down)
+function guessCategory(name) {
+  const n = name.toLowerCase();
+  const rules = [
+    [/back\d*$|background|bg|sky/, 'background'],
+    [/mitten|glove/, 'hands'],
+    [/hat|cap|helmet|beanie|crown|bow\b/, 'hats'], [/boot|shoe|slipper|trainer|sock/, 'shoes'],
+    [/scarf|scraf|collar|necklace/, 'neck'], [/glass|mask|specs/, 'face'], [/tail/, 'tail'],
+    [/dung|dun?agree|jumpsuit|overall|onesie|suit/, 'overalls'],
+    [/trouser|short|flare|bottom|skirt|jean|pant|leg/, 'bottoms'],
+    [/top|shirt|jumper|jacket|coat|dress|hoodie|sweater|cardigan/, 'tops'],
+    [/balloon|umbrella|fish|prop/, 'props'],
+  ];
+  for (const [re, cat] of rules) if (re.test(n) && S.categories.some((c) => c.id === cat)) return cat;
+  return S.categories[0].id;
+}
+const niceName = (id) => { const w = id.replace(/[-_]+/g, ' ').trim(); return w.charAt(0).toUpperCase() + w.slice(1); };
+const cleanId = (f) => f.replace(/\.[^.]+$/, '').toLowerCase().replace(/ /g, '-').replace(/[^a-z0-9_-]/g, '');
+const catOptions = (sel) => {
+  const opt = (c) => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.label)}</option>`;
+  const secs = S.sections || [], used = new Set();
+  let out = secs.map((sec) => {
+    const cs = sec.categories.map((id) => S.categories.find((c) => c.id === id)).filter(Boolean);
+    cs.forEach((c) => used.add(c.id));
+    return cs.length ? `<optgroup label="${esc(sec.label)}">${cs.map(opt).join('')}</optgroup>` : '';
+  }).join('');
+  const rest = S.categories.filter((c) => !used.has(c.id));
+  return out + (rest.length ? `<optgroup label="More">${rest.map(opt).join('')}</optgroup>` : '');
+};
+
+// ----- render -----
+function render() {
+  $('#canvasInfo').textContent = `Canvas: ${S.canvas[0]} × ${S.canvas[1]} px`;
+
+  // carousel list, grouped like the tabs in the game: tab, then category order, then item order
+  const secs = (S.sections || []).slice();
+  const placed = new Set(secs.flatMap((x) => x.categories));
+  const loose = S.categories.map((c) => c.id).filter((c) => !placed.has(c));
+  if (loose.length) secs.push({ label: 'More', categories: loose });
+  const catLabel = (id) => (S.categories.find((c) => c.id === id) || { label: id }).label;
+  let html = '';
+  secs.forEach((sec) => {
+    const group = sec.categories.flatMap((c) => S.items.filter((i) => i.category === c));
+    if (!group.length) return;
+    html += `<h3 class="sec">${esc(sec.label)}</h3>` + group.map((it, n) => {
+      const same = group.filter((g) => g.category === it.category);
+      const pos = same.indexOf(it);
+      return `
+    <div class="row" data-id="${it.id}">
+      <span class="num">${n + 1}</span>
+      <img src="/assets/thumbs/${it.category}/${it.id}.png?${Date.now()}" alt="">
+      <input class="grow name" type="text" value="${esc(it.name)}" aria-label="Name">
+      <select class="cat" aria-label="Type">${catOptions(it.category)}</select>
+      <button class="light up" ${pos === 0 ? 'disabled' : ''} aria-label="Move earlier">↑</button>
+      <button class="light down" ${pos === same.length - 1 ? 'disabled' : ''} aria-label="Move later">↓</button>
+      <button class="danger del">Delete</button>
+    </div>`;
+    }).join('');
+  });
+  $('#items').innerHTML = html || '<p class="hint">No items yet.</p>';
+
+  // pending / publish
+  const p = S.pending, any = p.upload.length || p.delete.length;
+  $('#pending').innerHTML = any ? `
+    <p><b>${p.upload.length} file(s)</b> ready to upload${p.delete.length ? ` and <b>${p.delete.length}</b> to delete` : ''}.</p>
+    <ol>
+      <li><button id="openFolder">Open the to-upload folder</button></li>
+      <li>On github.com open your repository, then <b>Add file → Upload files</b>.</li>
+      <li>Drag the folders inside <code>to-upload</code> (usually <code>assets</code> and <code>js</code>) into the page, and click <b>Commit changes</b>.</li>
+      ${p.delete.length ? '<li>Delete the old files listed below on GitHub (open the file, click <b>···</b>, then <b>Delete file</b>).</li>' : ''}
+      <li>Once it's uploaded, come back and press <b>Done, clear the list</b>.</li>
+    </ol>
+    <details><summary>Show the files</summary>
+      <ul class="files">${p.upload.map((f) => '<li>' + esc(f) + '</li>').join('')}</ul>
+      ${p.delete.length ? '<p><b>Delete on GitHub:</b></p><ul class="files">' + p.delete.map((f) => '<li>' + esc(f) + '</li>').join('') + '</ul>' : ''}
+    </details>
+    <p><button id="clearPending" class="light">Done, clear the list</button></p>`
+    : '<p>Nothing waiting. Anything you add or change above will appear here.</p>';
+}
+
+async function refresh() { S = await api('/api/state'); render(); }
+
+// ----- carousel list actions -----
+$('#items').addEventListener('click', async (e) => {
+  const row = e.target.closest('.row'); if (!row) return;
+  const id = row.dataset.id;
+  try {
+    if (e.target.classList.contains('up'))   await post('/api/update', { id, move: 'up' });
+    else if (e.target.classList.contains('down')) await post('/api/update', { id, move: 'down' });
+    else if (e.target.classList.contains('del')) {
+      if (!confirm(`Delete "${S.items.find((i) => i.id === id).name}"? This removes its PNG and thumbnail from this folder.`)) return;
+      await post('/api/update', { id, delete: true });
+    } else return;
+    await refresh();
+  } catch (err) { toast(err.message); }
+});
+$('#items').addEventListener('change', async (e) => {
+  const row = e.target.closest('.row'); if (!row) return;
+  try {
+    if (e.target.classList.contains('name')) await post('/api/update', { id: row.dataset.id, name: e.target.value });
+    if (e.target.classList.contains('cat'))  await post('/api/update', { id: row.dataset.id, category: e.target.value });
+    await refresh(); toast('Saved');
+  } catch (err) { toast(err.message); await refresh(); }
+});
+$('#pending').addEventListener('click', async (e) => {
+  if (e.target.id === 'openFolder') await post('/api/open-folder');
+  if (e.target.id === 'clearPending') {
+    if (!confirm('Only do this once everything is uploaded to GitHub. Clear the list?')) return;
+    await post('/api/clear-pending'); await refresh();
+  }
+});
+
+// ----- adding new files -----
+const drop = $('#drop'), fileInput = $('#file');
+drop.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => e.preventDefault());
+
+function addFiles(list) {
+  for (const file of list) {
+    if (!/\.png$/i.test(file.name)) { toast(file.name + ' is not a PNG'); continue; }
+    const id = cleanId(file.name);
+    const q = { file, id, category: guessCategory(id), name: niceName(id), url: URL.createObjectURL(file), status: '' };
+    const img = new Image();
+    img.onload = () => {
+      q.w = img.naturalWidth; q.h = img.naturalHeight;
+      if (q.w !== S.canvas[0] || q.h !== S.canvas[1]) q.status = `bad:It is ${q.w} × ${q.h} px but must be ${S.canvas[0]} × ${S.canvas[1]} px.`;
+      renderQueue();
+    };
+    img.src = q.url;
+    queue.push(q);
+  }
+  renderQueue();
+}
+
+function renderQueue() {
+  $('#newRows').innerHTML = queue.map((q, n) => {
+    const [kind, msg] = q.status.split(/:(.*)/s);
+    return `<div class="row" data-n="${n}">
+      <img src="${q.url}" alt="">
+      <input class="grow qname" type="text" value="${esc(q.name)}" aria-label="Name">
+      <select class="qcat" aria-label="Category">${catOptions(q.category)}</select>
+      <span class="status ${kind === 'ok' ? 'ok' : kind === 'bad' ? 'bad' : ''}">${esc(msg || (kind === 'busy' ? 'Adding…' : q.file.name))}</span>
+      <button class="light qx" aria-label="Remove from list">✕</button>
+    </div>`;
+  }).join('');
+  $('#addAll').disabled = !queue.some((q) => !q.status.startsWith('ok') && !q.status.startsWith('bad'));
+}
+$('#newRows').addEventListener('input', (e) => {
+  const n = +e.target.closest('.row')?.dataset.n; if (isNaN(n)) return;
+  if (e.target.classList.contains('qname')) queue[n].name = e.target.value;
+});
+$('#newRows').addEventListener('change', (e) => {
+  const n = +e.target.closest('.row')?.dataset.n; if (isNaN(n)) return;
+  if (e.target.classList.contains('qcat')) queue[n].category = e.target.value;
+});
+$('#newRows').addEventListener('click', (e) => {
+  if (!e.target.classList.contains('qx')) return;
+  queue.splice(+e.target.closest('.row').dataset.n, 1); renderQueue();
+});
+
+$('#addAll').addEventListener('click', async () => {
+  $('#addAll').disabled = true;
+  let added = 0;
+  for (const q of queue) {
+    if (q.status.startsWith('ok') || q.status.startsWith('bad')) continue;
+    q.status = 'busy:'; renderQueue();
+    try {
+      const r = await api('/api/upload', q.file, {
+        'Content-Type': 'image/png',
+        'X-Filename': encodeURIComponent(q.file.name),
+        'X-Category': encodeURIComponent(q.category),
+        'X-Name': encodeURIComponent(q.name),
+      });
+      q.status = 'ok:' + (r.replaced ? 'Replaced ✓' : 'Added ✓') + (r.kb > 100 ? ` (${r.kb} KB, a bit big)` : '');
+      added++;
+    } catch (err) { q.status = 'bad:' + err.message; }
+    renderQueue();
+  }
+  await refresh();
+  if (added) toast(`${added} added. Scroll down to put them on GitHub.`);
+  // tidy: clear the ones that worked after a moment
+  setTimeout(() => { queue = queue.filter((q) => !q.status.startsWith('ok')); renderQueue(); }, 2500);
+});
+
+refresh().catch((e) => { document.body.insertAdjacentHTML('afterbegin', '<p style="padding:20px"><b>Can\'t reach the admin server.</b> Is Terminal still running it? ' + esc(e.message) + '</p>'); });
+</script>
+</body>
+</html>
